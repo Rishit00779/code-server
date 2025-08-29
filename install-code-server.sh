@@ -210,17 +210,26 @@ EOF
 install_python_environment() {
     print_status "Setting up Python data science environment with uv..."
 
+    # Change to home directory to avoid directory issues
+    cd "$HOME"
+
     # Install uv if not present
     if ! command -v uv &> /dev/null; then
         print_status "Installing uv (Python package manager)..."
         curl -Ls https://astral.sh/uv/install.sh | bash
         export PATH="$HOME/.local/bin:$PATH"
+        # Source bashrc to ensure uv is in PATH
+        source "$HOME/.bashrc" 2>/dev/null || true
     fi
 
     # Create virtual environment with uv
     WORKON_HOME="$HOME/.virtualenvs"
     ENV_NAME="datascience"
     mkdir -p "$WORKON_HOME"
+    
+    # Change to workspace directory for venv creation
+    cd "$HOME/data-science-workspace"
+    
     if [ ! -d "$WORKON_HOME/$ENV_NAME" ]; then
         print_status "Creating Python 3.11 virtual environment with uv..."
         uv venv "$WORKON_HOME/$ENV_NAME" --python=3.11 || uv venv "$WORKON_HOME/$ENV_NAME"
@@ -235,7 +244,17 @@ install_python_environment() {
     uv pip install --upgrade pip
     uv pip install jupyter jupyterlab pandas numpy scipy matplotlib seaborn scikit-learn plotly bokeh streamlit dash fastapi uvicorn
 
+    # Create activation script for easy access
+    cat > "$HOME/activate_datascience.sh" << 'EOF'
+#!/bin/bash
+source "$HOME/.virtualenvs/datascience/bin/activate"
+echo "Data science environment activated!"
+EOF
+    chmod +x "$HOME/activate_datascience.sh"
+
     print_status "Python environment setup complete!"
+    print_status "To activate environment: source ~/.virtualenvs/datascience/bin/activate"
+    print_status "Or run: ./activate_datascience.sh"
 }
 
 # Main installation function
