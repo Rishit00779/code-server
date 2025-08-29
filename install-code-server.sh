@@ -133,15 +133,53 @@ install_code_server() {
     # Extract and install
     tar -xzf code-server.tar.gz
     
-    # Copy files to proper locations
-    cp "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/bin/code-server" "$INSTALL_DIR/bin/"
+    # Copy the entire code-server directory to preserve structure
+    EXTRACTED_DIR="code-server-${CODE_SERVER_VERSION}-linux-${ARCH}"
     
-    # Create lib directory and copy all lib files
-    mkdir -p "$INSTALL_DIR/lib"
-    cp -r "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/lib/"* "$INSTALL_DIR/lib/"
+    # Copy binary
+    cp "$EXTRACTED_DIR/bin/code-server" "$INSTALL_DIR/bin/"
+    
+    # Copy lib directory maintaining structure
+    if [ -d "$EXTRACTED_DIR/lib" ]; then
+        mkdir -p "$INSTALL_DIR/lib"
+        cp -r "$EXTRACTED_DIR/lib/"* "$INSTALL_DIR/lib/"
+    fi
+    
+    # Copy node_modules if they exist
+    if [ -d "$EXTRACTED_DIR/node_modules" ]; then
+        cp -r "$EXTRACTED_DIR/node_modules" "$INSTALL_DIR/"
+    fi
     
     # Make executable
     chmod +x "$INSTALL_DIR/bin/code-server"
+    
+    # Verify the installation
+    print_status "Verifying code-server installation..."
+    if [ -f "$INSTALL_DIR/bin/code-server" ]; then
+        print_status "Binary installed successfully"
+        # Test that the binary is not corrupted
+        if file "$INSTALL_DIR/bin/code-server" | grep -q "ELF"; then
+            print_status "Binary appears to be valid"
+        else
+            print_error "Binary may be corrupted"
+            exit 1
+        fi
+    else
+        print_error "Binary installation failed"
+        exit 1
+    fi
+    
+    # Create a wrapper script to handle any path issues
+    cat > "$INSTALL_DIR/bin/code-server-wrapper" << 'EOF'
+#!/bin/bash
+# Code-server wrapper script
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
+export NODE_PATH="$INSTALL_DIR/lib:$INSTALL_DIR/node_modules"
+cd "$HOME/data-science-workspace" || cd "$HOME"
+exec "$SCRIPT_DIR/code-server" "$@"
+EOF
+    chmod +x "$INSTALL_DIR/bin/code-server-wrapper"
     
     # Add to PATH if not already there
     if ! echo "$PATH" | grep -q "$INSTALL_DIR/bin"; then
@@ -191,13 +229,12 @@ After=network.target
 
 [Service]
 Type=exec
-ExecStart=$INSTALL_DIR/bin/code-server --config $CONFIG_DIR/config.yaml $HOME/data-science-workspace
+ExecStart=$INSTALL_DIR/bin/code-server-wrapper --config $CONFIG_DIR/config.yaml $HOME/data-science-workspace
 Restart=always
 RestartSec=10
 WorkingDirectory=$HOME/data-science-workspace
 Environment=HOME=$HOME
 Environment=PATH=$INSTALL_DIR/bin:/usr/local/bin:/usr/bin:/bin
-Environment=NODE_PATH=$INSTALL_DIR/lib/vscode/node_modules
 
 [Install]
 WantedBy=default.target
