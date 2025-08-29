@@ -187,29 +187,33 @@ EOF
 
 # Install Python data science environment
 install_python_environment() {
-    print_status "Setting up Python data science environment..."
-    
-    # Install miniconda
-    if ! command -v conda &> /dev/null; then
-        print_status "Installing Miniconda..."
-        wget -O miniconda.sh "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
-        bash miniconda.sh -b -p "$HOME/miniconda3"
-        rm miniconda.sh
-        
-        # Initialize conda
-        "$HOME/miniconda3/bin/conda" init bash
-        source "$HOME/.bashrc"
+    print_status "Setting up Python data science environment with uv..."
+
+    # Install uv if not present
+    if ! command -v uv &> /dev/null; then
+        print_status "Installing uv (Python package manager)..."
+        curl -Ls https://astral.sh/uv/install.sh | bash
+        export PATH="$HOME/.local/bin:$PATH"
     fi
-    
-    # Create data science environment
-    print_status "Creating data science conda environment..."
-    conda create -y -n datascience python=3.11
-    conda activate datascience
-    
+
+    # Create virtual environment with uv
+    WORKON_HOME="$HOME/.virtualenvs"
+    ENV_NAME="datascience"
+    mkdir -p "$WORKON_HOME"
+    if [ ! -d "$WORKON_HOME/$ENV_NAME" ]; then
+        print_status "Creating Python 3.11 virtual environment with uv..."
+        uv venv "$WORKON_HOME/$ENV_NAME" --python=3.11 || uv venv "$WORKON_HOME/$ENV_NAME"
+    fi
+
+    # Activate the environment
+    # shellcheck disable=SC1090
+    source "$WORKON_HOME/$ENV_NAME/bin/activate"
+
     # Install essential data science packages
-    conda install -y jupyter jupyterlab pandas numpy scipy matplotlib seaborn scikit-learn plotly bokeh
-    pip install streamlit dash fastapi uvicorn
-    
+    print_status "Installing data science packages with uv..."
+    uv pip install --upgrade pip
+    uv pip install jupyter jupyterlab pandas numpy scipy matplotlib seaborn scikit-learn plotly bokeh streamlit dash fastapi uvicorn
+
     print_status "Python environment setup complete!"
 }
 
