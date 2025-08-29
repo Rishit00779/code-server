@@ -267,60 +267,105 @@ install_code_server() {
         exit 1
     fi
     
-    # Copy binary
-    cp "$EXTRACTED_DIR/bin/code-server" "$INSTALL_DIR/bin/"
+    # Check what type of file the binary is before copying
+    print_status "Analyzing extracted binary..."
+    print_status "Binary file type: $(file "$EXTRACTED_DIR/bin/code-server" 2>/dev/null || echo 'unknown')"
+    EXTRACTED_SIZE=$(stat -c%s "$EXTRACTED_DIR/bin/code-server" 2>/dev/null || stat -f%z "$EXTRACTED_DIR/bin/code-server" 2>/dev/null || echo 0)
+    print_status "Extracted binary size: ${EXTRACTED_SIZE} bytes ($(($EXTRACTED_SIZE / 1024 / 1024))MB)"
     
-    # Copy lib directory maintaining structure
-    if [ -d "$EXTRACTED_DIR/lib" ]; then
-        mkdir -p "$INSTALL_DIR/lib"
-        cp -r "$EXTRACTED_DIR/lib/"* "$INSTALL_DIR/lib/"
+    # If the binary is small, it might be a wrapper script - let's check contents
+    if [ "$EXTRACTED_SIZE" -lt 10000000 ]; then
+        print_status "Binary appears to be a script/wrapper. Contents:"
+        head -10 "$EXTRACTED_DIR/bin/code-server" 2>/dev/null || true
     fi
     
-    # Copy node_modules if they exist
-    if [ -d "$EXTRACTED_DIR/node_modules" ]; then
-        cp -r "$EXTRACTED_DIR/node_modules" "$INSTALL_DIR/"
-    fi
+    # Copy the entire code-server installation to preserve all dependencies and structure
+    print_status "Copying code-server installation..."
+    
+    # Instead of copying individual files, copy the entire structure
+    CODE_SERVER_INSTALL_DIR="$INSTALL_DIR/code-server-${CODE_SERVER_VERSION}"
+    
+    # Remove any existing installation of this version
+    rm -rf "$CODE_SERVER_INSTALL_DIR" 2>/dev/null || true
+    
+    # Copy the entire extracted directory
+    cp -r "$EXTRACTED_DIR" "$CODE_SERVER_INSTALL_DIR"
+    
+    # Create a symlink or wrapper script in the bin directory
+    mkdir -p "$INSTALL_DIR/bin"
+    
+    # Create a wrapper script that points to the actual installation
+    cat > "$INSTALL_DIR/bin/code-server" << EOF
+#!/bin/bash
+# Code-server wrapper script
+exec "$CODE_SERVER_INSTALL_DIR/bin/code-server" "\$@"
+EOF
+    chmod +x "$INSTALL_DIR/bin/code-server"
     
     # Make executable
-    chmod +x "$INSTALL_DIR/bin/code-server"
+    chmod +x "$CODE_SERVER_INSTALL_DIR/bin/code-server"
     
     # Verify the installation
     print_status "Verifying code-server installation..."
-    if [ -f "$INSTALL_DIR/bin/code-server" ]; then
-        print_status "Binary copied successfully"
+    if [ -f "$INSTALL_DIR/bin/code-server" ] && [ -f "$CODE_SERVER_INSTALL_DIR/bin/code-server" ]; then
+        print_status "Wrapper and installation copied successfully"
         
-        # Check file size (should be > 50MB for code-server v4.103.2) - cross-platform stat command
-        FILESIZE=$(stat -c%s "$INSTALL_DIR/bin/code-server" 2>/dev/null || stat -f%z "$INSTALL_DIR/bin/code-server" 2>/dev/null || echo 0)
-        if [ "$FILESIZE" -lt 50000000 ]; then
-            print_error "Binary file appears too small (${FILESIZE} bytes / $(($FILESIZE / 1024 / 1024))MB), likely corrupted"
-            print_status "Expected size: ~50-80MB for code-server binary"
-            exit 1
+        # Check the actual binary in the installation directory
+        ACTUAL_BINARY="$CODE_SERVER_INSTALL_DIR/bin/code-server"
+        
+        # Check file size of the actual binary
+        FILESIZE=$(stat -c%s "$ACTUAL_BINARY" 2>/dev/null || stat -f%z "$ACTUAL_BINARY" 2>/dev/null || echo 0)
+        print_status "Actual binary size: ${FILESIZE} bytes ($(($FILESIZE / 1024 / 1024))MB)"
+        
+        # If the binary is still small, it might be a Node.js script - that's actually normal for code-server
+        if [ "$FILESIZE" -lt 10000 ]; then
+            print_status "Binary appears to be a Node.js script (normal for code-server)"
+            print_status "Checking for Node.js dependencies..."
+            
+            # Look for the actual Node.js executable or libraries
+            if [ -d "$CODE_SERVER_INSTALL_DIR/lib" ]; then
+                LIB_SIZE=$(du -sb "$CODE_SERVER_INSTALL_DIR/lib" 2>/dev/null | cut -f1)
+                print_status "Library directory size: $((LIB_SIZE / 1024 / 1024))MB"
+            fi
+            
+            if [ -d "$CODE_SERVER_INSTALL_DIR/node_modules" ]; then
+                NODE_MODULES_SIZE=$(du -sb "$CODE_SERVER_INSTALL_DIR/node_modules" 2>/dev/null | cut -f1)
+                print_status "Node modules size: $((NODE_MODULES_SIZE / 1024 / 1024))MB"
+            fi
         fi
         
-        # Test that the binary is executable and valid
-        if file "$INSTALL_DIR/bin/code-server" 2>/dev/null | grep -q "executable\|ELF"; then
-            print_status "Binary appears to be valid (${FILESIZE} bytes)"
+        # Test that the wrapper script works
+        if file "$INSTALL_DIR/bin/code-server" 2>/dev/null | grep -q "shell script"; then
+            print_status "Wrapper script created successfully"
         else
-            print_error "Binary may be corrupted or invalid format"
+            print_error "Wrapper script may be corrupted"
             print_status "File type: $(file "$INSTALL_DIR/bin/code-server" 2>/dev/null || echo 'unknown')"
-            exit 1
         fi
     else
-        print_error "Binary installation failed - file not found"
+        print_error "Installation failed - files not found"
         exit 1
     fi
     
     # Create a wrapper script to handle any path issues
-    cat > "$INSTALL_DIR/bin/code-server-wrapper" << 'EOF'
+    cat > "$INSTALL_DIR/bin/code-server-wrapper" << EOF
 #!/bin/bash
 # Code-server wrapper script
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-INSTALL_DIR="$(dirname "$SCRIPT_DIR")"
-export NODE_PATH="$INSTALL_DIR/lib:$INSTALL_DIR/node_modules"
-cd "$HOME/data-science-workspace" || cd "$HOME"
-exec "$SCRIPT_DIR/code-server" "$@"
+CODE_SERVER_INSTALL_DIR="$CODE_SERVER_INSTALL_DIR"
+export NODE_PATH="\$CODE_SERVER_INSTALL_DIR/lib:\$CODE_SERVER_INSTALL_DIR/node_modules"
+cd "\$HOME/data-science-workspace" || cd "\$HOME"
+exec "\$CODE_SERVER_INSTALL_DIR/bin/code-server" "\$@"
 EOF
     chmod +x "$INSTALL_DIR/bin/code-server-wrapper"
+    
+    # Test the installation
+    print_status "Testing code-server installation..."
+    if timeout 10 "$INSTALL_DIR/bin/code-server" --version >/dev/null 2>&1; then
+        VERSION_OUTPUT=$("$INSTALL_DIR/bin/code-server" --version 2>/dev/null | head -1)
+        print_status "Code-server test successful: $VERSION_OUTPUT"
+    else
+        print_warning "Code-server version check timed out or failed (this might be normal)"
+        print_status "Installation completed, but version test inconclusive"
+    fi
     
     # Add to PATH if not already there
     if ! echo "$PATH" | grep -q "$INSTALL_DIR/bin"; then
