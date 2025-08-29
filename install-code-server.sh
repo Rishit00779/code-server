@@ -5,6 +5,17 @@
 
 set -e
 
+# Cleanup function
+cleanup() {
+    if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+        print_status "Cleaning up temporary directory..."
+        rm -rf "$TEMP_DIR"
+    fi
+}
+
+# Set trap to cleanup on exit
+trap cleanup EXIT INT TERM
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -91,20 +102,27 @@ create_directories() {
 install_code_server() {
     print_status "Downloading code-server v$CODE_SERVER_VERSION..."
     
+    # Check disk space in different locations first
+    print_status "Checking available disk space..."
+    df -h /tmp /home $HOME 2>/dev/null | grep -E "(Filesystem|tmp|home)" || true
+    
     # Use a more reliable temporary directory
-    # Create a unique temporary directory for this session
-    TEMP_DIR=$(mktemp -d)
+    # Create a unique temporary directory in home directory instead of /tmp
+    TEMP_DIR="$HOME/tmp-code-server-install-$$"
+    mkdir -p "$TEMP_DIR"
     
     # Check for sufficient disk space (optional but good practice)
-    # Get available space in kilobytes
-    AVAILABLE_SPACE=$(df -k "$TEMP_DIR" | tail -1 | awk '{print $4}')
-    REQUIRED_SPACE=150000 # ~150 MB in KB, a safe estimate
+    # Get available space in kilobytes for home directory
+    AVAILABLE_SPACE=$(df -k "$HOME" | tail -1 | awk '{print $4}')
+    REQUIRED_SPACE=200000 # ~200 MB in KB, increased for extraction
     
     if [ "$AVAILABLE_SPACE" -lt "$REQUIRED_SPACE" ]; then
-        print_error "Not enough disk space to install code-server. Required: ~150MB, Available: $(($AVAILABLE_SPACE / 1024))MB."
-        rm -rf "$TEMP_DIR"
+        print_error "Not enough disk space to install code-server. Required: ~200MB, Available: $(($AVAILABLE_SPACE / 1024))MB."
         exit 1
     fi
+    
+    print_status "Using temporary directory: $TEMP_DIR"
+    print_status "Available space: $(($AVAILABLE_SPACE / 1024))MB"
     
     cd "$TEMP_DIR"
     
@@ -213,11 +231,17 @@ install_code_server() {
     
     # Extract and install
     print_status "Extracting code-server archive..."
+    print_status "Archive size: $(du -h code-server.tar.gz | cut -f1)"
+    print_status "Available space before extraction: $(df -h "$TEMP_DIR" | tail -1 | awk '{print $4}')"
+    
     if ! tar -xzf code-server.tar.gz; then
         print_error "Failed to extract code-server archive"
-        rm -rf "$TEMP_DIR"
+        print_status "Available space after failed extraction: $(df -h "$TEMP_DIR" | tail -1 | awk '{print $4}')"
         exit 1
     fi
+    
+    print_status "Extraction completed successfully"
+    print_status "Available space after extraction: $(df -h "$TEMP_DIR" | tail -1 | awk '{print $4}')"
     
     # Copy the entire code-server directory to preserve structure
     EXTRACTED_DIR="code-server-${CODE_SERVER_VERSION}-linux-${ARCH}"
