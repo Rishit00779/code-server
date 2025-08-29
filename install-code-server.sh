@@ -157,7 +157,6 @@ install_code_server() {
         if ! curl -I --silent --fail "$DOWNLOAD_URL" >/dev/null 2>&1; then
             print_error "Release v${CODE_SERVER_VERSION} not found or URL is invalid"
             print_status "You may need to check available releases at: https://github.com/coder/code-server/releases"
-            rm -rf "$TEMP_DIR"
             exit 1
         fi
         print_status "Release verified, proceeding with download..."
@@ -173,12 +172,10 @@ install_code_server() {
                 print_status "Using curl to download..."
                 if ! curl -L --progress-bar --max-time 60 --retry 3 -o code-server.tar.gz "$DOWNLOAD_URL"; then
                     print_error "Both wget and curl failed to download code-server"
-                    rm -rf "$TEMP_DIR"
                     exit 1
                 fi
             else
                 print_error "Failed to download code-server and curl not available"
-                rm -rf "$TEMP_DIR"
                 exit 1
             fi
         fi
@@ -186,12 +183,10 @@ install_code_server() {
         print_status "Using curl to download..."
         if ! curl -L --progress-bar --max-time 60 --retry 3 -o code-server.tar.gz "$DOWNLOAD_URL"; then
             print_error "Failed to download code-server with curl"
-            rm -rf "$TEMP_DIR"
             exit 1
         fi
     else
         print_error "Neither wget nor curl available for download"
-        rm -rf "$TEMP_DIR"
         exit 1
     fi
     
@@ -199,11 +194,10 @@ install_code_server() {
     print_status "Verifying download integrity..."
     if [ ! -f code-server.tar.gz ]; then
         print_error "Downloaded file does not exist"
-        rm -rf "$TEMP_DIR"
         exit 1
     fi
     
-    DOWNLOAD_SIZE=$(stat -c%s code-server.tar.gz 2>/dev/null || echo 0)
+    DOWNLOAD_SIZE=$(stat -c%s code-server.tar.gz 2>/dev/null || stat -f%z code-server.tar.gz 2>/dev/null || echo 0)
     print_status "Downloaded file size: ${DOWNLOAD_SIZE} bytes"
     
     if [ "$DOWNLOAD_SIZE" -lt 10000000 ]; then  # Should be at least ~10MB
@@ -211,21 +205,19 @@ install_code_server() {
         print_status "This usually indicates a network issue or invalid download URL"
         
         # Check if it's an HTML error page
-        if file code-server.tar.gz | grep -q "HTML\|text"; then
+        if file code-server.tar.gz 2>/dev/null | grep -q "HTML\|text"; then
             print_error "Downloaded file appears to be HTML (likely a 404 error page)"
             print_status "First few lines of downloaded file:"
             head -5 code-server.tar.gz 2>/dev/null || true
         fi
         
-        rm -rf "$TEMP_DIR"
         exit 1
     fi
     
     # Check if it's a valid tar file
     if ! tar -tzf code-server.tar.gz >/dev/null 2>&1; then
         print_error "Downloaded file is not a valid tar archive"
-        print_status "File type: $(file code-server.tar.gz)"
-        rm -rf "$TEMP_DIR"
+        print_status "File type: $(file code-server.tar.gz 2>/dev/null || echo 'unknown')"
         exit 1
     fi
     
@@ -249,8 +241,7 @@ install_code_server() {
     if [ ! -d "$EXTRACTED_DIR" ]; then
         print_error "Extracted directory not found: $EXTRACTED_DIR"
         print_status "Available contents:"
-        ls -la
-        rm -rf "$TEMP_DIR"
+        ls -la 2>/dev/null || true
         exit 1
     fi
     
@@ -258,8 +249,7 @@ install_code_server() {
     if [ ! -f "$EXTRACTED_DIR/bin/code-server" ]; then
         print_error "code-server binary not found in extracted archive"
         print_status "Contents of $EXTRACTED_DIR:"
-        find "$EXTRACTED_DIR" -type f | head -10
-        rm -rf "$TEMP_DIR"
+        find "$EXTRACTED_DIR" -type f 2>/dev/null | head -10 || true
         exit 1
     fi
     
@@ -285,19 +275,19 @@ install_code_server() {
     if [ -f "$INSTALL_DIR/bin/code-server" ]; then
         print_status "Binary copied successfully"
         
-        # Check file size (should be > 1MB for code-server)
-        FILESIZE=$(stat -c%s "$INSTALL_DIR/bin/code-server" 2>/dev/null || echo 0)
+        # Check file size (should be > 1MB for code-server) - cross-platform stat command
+        FILESIZE=$(stat -c%s "$INSTALL_DIR/bin/code-server" 2>/dev/null || stat -f%z "$INSTALL_DIR/bin/code-server" 2>/dev/null || echo 0)
         if [ "$FILESIZE" -lt 1000000 ]; then
             print_error "Binary file appears too small (${FILESIZE} bytes), likely corrupted"
             exit 1
         fi
         
         # Test that the binary is executable and valid
-        if file "$INSTALL_DIR/bin/code-server" | grep -q "executable\|ELF"; then
+        if file "$INSTALL_DIR/bin/code-server" 2>/dev/null | grep -q "executable\|ELF"; then
             print_status "Binary appears to be valid (${FILESIZE} bytes)"
         else
             print_error "Binary may be corrupted or invalid format"
-            print_status "File type: $(file "$INSTALL_DIR/bin/code-server")"
+            print_status "File type: $(file "$INSTALL_DIR/bin/code-server" 2>/dev/null || echo 'unknown')"
             exit 1
         fi
     else
@@ -322,9 +312,6 @@ EOF
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
         export PATH="$INSTALL_DIR/bin:$PATH"
     fi
-    
-    # Clean up the temporary directory
-    rm -rf "$TEMP_DIR"
     
     print_status "Code-server installed successfully!"
 }
