@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration variables
-CODE_SERVER_VERSION="4.89.1"
+CODE_SERVER_VERSION="4.93.1"
 INSTALL_DIR="$HOME/.local"
 CONFIG_DIR="$HOME/.config/code-server"
 SERVICE_DIR="$HOME/.config/systemd/user"
@@ -131,12 +131,29 @@ install_code_server() {
     print_status "Downloading code-server binary..."
     DOWNLOAD_URL="https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-${ARCH}.tar.gz"
     
-    # Try wget first, then curl as fallback
+    print_status "Download URL: $DOWNLOAD_URL"
+    
+    # First, check if the release exists by attempting a HEAD request
+    if command -v curl &> /dev/null; then
+        print_status "Checking if release exists..."
+        if ! curl -I --silent --fail "$DOWNLOAD_URL" >/dev/null 2>&1; then
+            print_error "Release v${CODE_SERVER_VERSION} not found or URL is invalid"
+            print_status "You may need to check available releases at: https://github.com/coder/code-server/releases"
+            rm -rf "$TEMP_DIR"
+            exit 1
+        fi
+        print_status "Release verified, proceeding with download..."
+    fi
+    
+    # Try wget first with verbose output
     if command -v wget &> /dev/null; then
-        if ! wget --timeout=30 --tries=3 -O code-server.tar.gz "$DOWNLOAD_URL"; then
+        print_status "Using wget to download..."
+        if ! wget --progress=bar:force --timeout=60 --tries=3 -O code-server.tar.gz "$DOWNLOAD_URL"; then
             print_warning "wget failed, trying curl..."
+            rm -f code-server.tar.gz
             if command -v curl &> /dev/null; then
-                if ! curl -L --max-time 30 --retry 3 -o code-server.tar.gz "$DOWNLOAD_URL"; then
+                print_status "Using curl to download..."
+                if ! curl -L --progress-bar --max-time 60 --retry 3 -o code-server.tar.gz "$DOWNLOAD_URL"; then
                     print_error "Both wget and curl failed to download code-server"
                     rm -rf "$TEMP_DIR"
                     exit 1
@@ -148,7 +165,8 @@ install_code_server() {
             fi
         fi
     elif command -v curl &> /dev/null; then
-        if ! curl -L --max-time 30 --retry 3 -o code-server.tar.gz "$DOWNLOAD_URL"; then
+        print_status "Using curl to download..."
+        if ! curl -L --progress-bar --max-time 60 --retry 3 -o code-server.tar.gz "$DOWNLOAD_URL"; then
             print_error "Failed to download code-server with curl"
             rm -rf "$TEMP_DIR"
             exit 1
@@ -161,8 +179,26 @@ install_code_server() {
     
     # Verify download integrity
     print_status "Verifying download integrity..."
-    if [ ! -s code-server.tar.gz ]; then
-        print_error "Downloaded file is empty"
+    if [ ! -f code-server.tar.gz ]; then
+        print_error "Downloaded file does not exist"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+    
+    DOWNLOAD_SIZE=$(stat -c%s code-server.tar.gz 2>/dev/null || echo 0)
+    print_status "Downloaded file size: ${DOWNLOAD_SIZE} bytes"
+    
+    if [ "$DOWNLOAD_SIZE" -lt 10000000 ]; then  # Should be at least ~10MB
+        print_error "Downloaded file is too small (${DOWNLOAD_SIZE} bytes), likely incomplete or corrupted"
+        print_status "This usually indicates a network issue or invalid download URL"
+        
+        # Check if it's an HTML error page
+        if file code-server.tar.gz | grep -q "HTML\|text"; then
+            print_error "Downloaded file appears to be HTML (likely a 404 error page)"
+            print_status "First few lines of downloaded file:"
+            head -5 code-server.tar.gz 2>/dev/null || true
+        fi
+        
         rm -rf "$TEMP_DIR"
         exit 1
     fi
@@ -170,6 +206,7 @@ install_code_server() {
     # Check if it's a valid tar file
     if ! tar -tzf code-server.tar.gz >/dev/null 2>&1; then
         print_error "Downloaded file is not a valid tar archive"
+        print_status "File type: $(file code-server.tar.gz)"
         rm -rf "$TEMP_DIR"
         exit 1
     fi
