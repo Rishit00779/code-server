@@ -137,8 +137,8 @@ install_code_server() {
     cp "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/bin/code-server" "$INSTALL_DIR/bin/"
     
     # Create lib directory and copy all lib files
-    mkdir -p "$INSTALL_DIR/lib/code-server"
-    cp -r "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/lib/code-server/"* "$INSTALL_DIR/lib/code-server/"
+    mkdir -p "$INSTALL_DIR/lib"
+    cp -r "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/lib/"* "$INSTALL_DIR/lib/"
     
     # Make executable
     chmod +x "$INSTALL_DIR/bin/code-server"
@@ -197,7 +197,7 @@ RestartSec=10
 WorkingDirectory=$HOME/data-science-workspace
 Environment=HOME=$HOME
 Environment=PATH=$INSTALL_DIR/bin:/usr/local/bin:/usr/bin:/bin
-Environment=NODE_PATH=$INSTALL_DIR/lib/code-server/lib/node_modules
+Environment=NODE_PATH=$INSTALL_DIR/lib/vscode/node_modules
 
 [Install]
 WantedBy=default.target
