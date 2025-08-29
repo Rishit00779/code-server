@@ -274,11 +274,30 @@ handle_error() {
 # Set error trap
 trap 'handle_error $LINENO' ERR
 
+# Fix curl-minimal package issues on Amazon Linux
+fix_curl_minimal_issue() {
+    if grep -qi 'amzn' /etc/os-release 2>/dev/null; then
+        if rpm -q curl-minimal &>/dev/null; then
+            print_status "Checking for curl-minimal package issues (Amazon Linux)..."
+            sudo dnf clean all
+            sudo dnf update -y
+            sudo dnf reinstall curl curl-minimal -y || {
+                print_warning "Reinstall failed, trying remove and install."
+                sudo dnf remove curl curl-minimal -y
+                sudo dnf install curl -y
+            }
+        fi
+    fi
+}
+
 # Main execution
 main() {
     # Make sure all scripts are executable
     chmod +x *.sh
-    
+
+    # Fix curl-minimal issue if present
+    fix_curl_minimal_issue
+
     check_environment
     get_user_preferences
     run_installation

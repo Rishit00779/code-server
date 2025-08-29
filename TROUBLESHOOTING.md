@@ -39,6 +39,33 @@ chmod +x *.sh
 chmod +x install-code-server.sh
 ```
 
+### curl-minimal Package Error (Amazon Linux)
+If you see an error like:
+```
+Problem: problem with installed package curl-minimal-8.11.1-4.amzn2023.0.1.x86_64
+```
+Try the following steps:
+```bash
+# Clean yum/dnf cache
+sudo dnf clean all
+
+# Update all packages
+sudo dnf update -y
+
+# Reinstall curl and dependencies
+sudo dnf reinstall curl curl-minimal -y
+
+# If the problem persists, remove and install again
+sudo dnf remove curl curl-minimal -y
+sudo dnf install curl -y
+```
+If you still have issues, check for broken dependencies:
+```bash
+sudo dnf check
+sudo dnf repoquery --unsatisfied
+```
+Refer to the latest Amazon Linux release notes or open an issue with the exact error message.
+
 ### Sudo Password Prompts
 ```bash
 # Configure sudo timeout (optional)
