@@ -234,8 +234,8 @@ show_completion_info() {
     echo
     
     echo -e "${BLUE}Python Environment:${NC}"
-    echo "• Activate: conda activate datascience"
-    echo "• Location: ~/miniconda3/envs/datascience"
+    echo "• Activate: source ~/.virtualenvs/datascience/bin/activate"
+    echo "• Location: ~/.virtualenvs/datascience"
     echo "• Jupyter:  jupyter lab --port=8888 --no-browser"
     echo
     

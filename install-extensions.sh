@@ -171,8 +171,7 @@ configure_settings() {
     
     cat > "$SETTINGS_DIR/settings.json" << 'EOF'
 {
-    "python.defaultInterpreterPath": "~/miniconda3/envs/datascience/bin/python",
-    "python.condaPath": "~/miniconda3/bin/conda",
+    "python.defaultInterpreterPath": "~/.virtualenvs/datascience/bin/python",
     "python.terminal.activateEnvironment": true,
     "python.linting.enabled": true,
     "python.linting.pylintEnabled": false,
@@ -194,9 +193,9 @@ configure_settings() {
             "path": "/bin/bash",
             "args": ["-l"]
         },
-        "conda": {
-            "path": "~/miniconda3/bin/conda",
-            "args": ["activate", "datascience"]
+        "datascience": {
+            "path": "/bin/bash",
+            "args": ["-l", "-c", "source ~/.virtualenvs/datascience/bin/activate && exec bash"]
         }
     },
     "workbench.iconTheme": "material-icon-theme",
@@ -248,7 +247,7 @@ data-science-workspace/
 
 ## Getting Started
 
-1. Activate the conda environment: `conda activate datascience`
+1. Activate the virtual environment: `source ~/.virtualenvs/datascience/bin/activate`
 2. Start Jupyter Lab: `jupyter lab --port=8888 --no-browser`
 3. Open notebooks in the `notebooks/` directory
 4. Save scripts in the `scripts/` directory
@@ -482,7 +481,7 @@ main() {
     echo -e "${YELLOW}Next steps:${NC}"
     echo "1. Restart code-server: systemctl --user restart code-server"
     echo "2. Open workspace: File -> Open Folder -> ~/data-science-workspace"
-    echo "3. Activate conda environment: conda activate datascience"
+    echo "3. Activate virtual environment: source ~/.virtualenvs/datascience/bin/activate"
     echo "4. Start Jupyter Lab: jupyter lab --port=8888 --no-browser"
     echo "5. Open the welcome notebook in notebooks/welcome.ipynb"
 }

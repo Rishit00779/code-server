@@ -191,9 +191,8 @@ Type=exec
 ExecStart=$INSTALL_DIR/bin/code-server --config $CONFIG_DIR/config.yaml $HOME/data-science-workspace
 Restart=always
 RestartSec=10
-User=%i
-Environment=HOME=%h
-Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=$HOME
+Environment=PATH=$INSTALL_DIR/bin:/usr/local/bin:/usr/bin:/bin
 
 [Install]
 WantedBy=default.target
