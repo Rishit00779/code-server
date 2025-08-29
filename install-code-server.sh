@@ -91,7 +91,22 @@ create_directories() {
 install_code_server() {
     print_status "Downloading code-server v$CODE_SERVER_VERSION..."
     
-    cd /tmp
+    # Use a more reliable temporary directory
+    # Create a unique temporary directory for this session
+    TEMP_DIR=$(mktemp -d)
+    
+    # Check for sufficient disk space (optional but good practice)
+    # Get available space in kilobytes
+    AVAILABLE_SPACE=$(df -k "$TEMP_DIR" | tail -1 | awk '{print $4}')
+    REQUIRED_SPACE=150000 # ~150 MB in KB, a safe estimate
+    
+    if [ "$AVAILABLE_SPACE" -lt "$REQUIRED_SPACE" ]; then
+        print_error "Not enough disk space to install code-server. Required: ~150MB, Available: $(($AVAILABLE_SPACE / 1024))MB."
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+    
+    cd "$TEMP_DIR"
     
     # Determine architecture
     ARCH=$(uname -m)
@@ -107,6 +122,7 @@ install_code_server() {
             ;;
         *)
             print_error "Unsupported architecture: $ARCH"
+            rm -rf "$TEMP_DIR"
             exit 1
             ;;
     esac
@@ -116,6 +132,8 @@ install_code_server() {
     
     # Extract and install
     tar -xzf code-server.tar.gz
+    
+    # Copy files
     cp "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/bin/code-server" "$INSTALL_DIR/bin/"
     cp -r "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/lib" "$INSTALL_DIR/"
     
@@ -127,6 +145,9 @@ install_code_server() {
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
         export PATH="$INSTALL_DIR/bin:$PATH"
     fi
+    
+    # Clean up the temporary directory
+    rm -rf "$TEMP_DIR"
     
     print_status "Code-server installed successfully!"
 }
