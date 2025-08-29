@@ -68,10 +68,10 @@ install_dependencies() {
         "centos"|"fedora")
             if command -v dnf &> /dev/null; then
                 sudo dnf update -y
-                sudo dnf install -y curl wget git gcc gcc-c++ make python3 python3-pip nodejs npm nginx certbot python3-certbot-nginx
+                sudo dnf install -y --allowerasing curl wget git gcc gcc-c++ make python3 python3-pip nodejs npm nginx certbot python3-certbot-nginx
             else
                 sudo yum update -y
-                sudo yum install -y curl wget git gcc gcc-c++ make python3 python3-pip nodejs npm nginx certbot python3-certbot-nginx
+                sudo yum install -y --allowerasing curl wget git gcc gcc-c++ make python3 python3-pip nodejs npm nginx certbot python3-certbot-nginx
             fi
             ;;
     esac
