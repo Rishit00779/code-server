@@ -133,9 +133,12 @@ install_code_server() {
     # Extract and install
     tar -xzf code-server.tar.gz
     
-    # Copy files
+    # Copy files to proper locations
     cp "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/bin/code-server" "$INSTALL_DIR/bin/"
-    cp -r "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/lib" "$INSTALL_DIR/"
+    
+    # Create lib directory and copy all lib files
+    mkdir -p "$INSTALL_DIR/lib/code-server"
+    cp -r "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/lib/code-server/"* "$INSTALL_DIR/lib/code-server/"
     
     # Make executable
     chmod +x "$INSTALL_DIR/bin/code-server"
@@ -191,8 +194,10 @@ Type=exec
 ExecStart=$INSTALL_DIR/bin/code-server --config $CONFIG_DIR/config.yaml $HOME/data-science-workspace
 Restart=always
 RestartSec=10
+WorkingDirectory=$HOME/data-science-workspace
 Environment=HOME=$HOME
 Environment=PATH=$INSTALL_DIR/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_PATH=$INSTALL_DIR/lib/code-server/lib/node_modules
 
 [Install]
 WantedBy=default.target
