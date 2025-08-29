@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Make Scripts Executable",
+			"type": "shell",
+			"command": "chmod",
+			"args": [
+				"+x",
+				"*.sh"
+			],
+			"group": "build",
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

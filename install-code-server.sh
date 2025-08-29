@@ -1,0 +1,243 @@
+#!/bin/bash
+
+# Code-Server Installation Script for Data Science on AWS EC2
+# User-level installation script
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration variables
+CODE_SERVER_VERSION="4.89.1"
+INSTALL_DIR="$HOME/.local"
+CONFIG_DIR="$HOME/.config/code-server"
+SERVICE_DIR="$HOME/.config/systemd/user"
+
+echo -e "${BLUE}🚀 Starting Code-Server Installation for Data Science${NC}"
+
+# Function to print colored output
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if running on supported OS
+check_os() {
+    print_status "Checking operating system..."
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        if command -v apt-get &> /dev/null; then
+            OS="ubuntu"
+            print_status "Detected Ubuntu/Debian system"
+        elif command -v yum &> /dev/null; then
+            OS="centos"
+            print_status "Detected CentOS/RHEL system"
+        elif command -v dnf &> /dev/null; then
+            OS="fedora"
+            print_status "Detected Fedora system"
+        else
+            print_error "Unsupported Linux distribution"
+            exit 1
+        fi
+    else
+        print_error "This script is designed for Linux systems only"
+        exit 1
+    fi
+}
+
+# Install system dependencies
+install_dependencies() {
+    print_status "Installing system dependencies..."
+    
+    case $OS in
+        "ubuntu")
+            sudo apt update
+            sudo apt install -y curl wget git build-essential python3 python3-pip nodejs npm nginx certbot python3-certbot-nginx
+            ;;
+        "centos"|"fedora")
+            if command -v dnf &> /dev/null; then
+                sudo dnf update -y
+                sudo dnf install -y curl wget git gcc gcc-c++ make python3 python3-pip nodejs npm nginx certbot python3-certbot-nginx
+            else
+                sudo yum update -y
+                sudo yum install -y curl wget git gcc gcc-c++ make python3 python3-pip nodejs npm nginx certbot python3-certbot-nginx
+            fi
+            ;;
+    esac
+}
+
+# Create necessary directories
+create_directories() {
+    print_status "Creating directories..."
+    mkdir -p "$INSTALL_DIR/bin"
+    mkdir -p "$CONFIG_DIR"
+    mkdir -p "$SERVICE_DIR"
+    mkdir -p "$HOME/data-science-workspace"
+    mkdir -p "$HOME/.local/share/code-server/extensions"
+}
+
+# Download and install code-server
+install_code_server() {
+    print_status "Downloading code-server v$CODE_SERVER_VERSION..."
+    
+    cd /tmp
+    
+    # Determine architecture
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64)
+            ARCH="amd64"
+            ;;
+        aarch64)
+            ARCH="arm64"
+            ;;
+        armv7l)
+            ARCH="armv7"
+            ;;
+        *)
+            print_error "Unsupported architecture: $ARCH"
+            exit 1
+            ;;
+    esac
+    
+    # Download code-server
+    wget -O code-server.tar.gz "https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-${ARCH}.tar.gz"
+    
+    # Extract and install
+    tar -xzf code-server.tar.gz
+    cp "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/bin/code-server" "$INSTALL_DIR/bin/"
+    cp -r "code-server-${CODE_SERVER_VERSION}-linux-${ARCH}/lib" "$INSTALL_DIR/"
+    
+    # Make executable
+    chmod +x "$INSTALL_DIR/bin/code-server"
+    
+    # Add to PATH if not already there
+    if ! echo "$PATH" | grep -q "$INSTALL_DIR/bin"; then
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+        export PATH="$INSTALL_DIR/bin:$PATH"
+    fi
+    
+    print_status "Code-server installed successfully!"
+}
+
+# Generate configuration
+generate_config() {
+    print_status "Generating code-server configuration..."
+    
+    # Generate random password if not provided
+    if [ -z "$CODE_SERVER_PASSWORD" ]; then
+        CODE_SERVER_PASSWORD=$(openssl rand -base64 32)
+        print_warning "Generated password: $CODE_SERVER_PASSWORD"
+        print_warning "Please save this password safely!"
+    fi
+    
+    cat > "$CONFIG_DIR/config.yaml" << EOF
+bind-addr: 127.0.0.1:8080
+auth: password
+password: $CODE_SERVER_PASSWORD
+cert: false
+user-data-dir: $HOME/.local/share/code-server
+extensions-dir: $HOME/.local/share/code-server/extensions
+disable-telemetry: true
+disable-update-check: true
+EOF
+
+    print_status "Configuration created at $CONFIG_DIR/config.yaml"
+}
+
+# Create systemd user service
+create_service() {
+    print_status "Creating systemd user service..."
+    
+    cat > "$SERVICE_DIR/code-server.service" << EOF
+[Unit]
+Description=code-server
+After=network.target
+
+[Service]
+Type=exec
+ExecStart=$INSTALL_DIR/bin/code-server --config $CONFIG_DIR/config.yaml $HOME/data-science-workspace
+Restart=always
+RestartSec=10
+User=%i
+Environment=HOME=%h
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target
+EOF
+
+    # Enable systemd user services
+    systemctl --user daemon-reload
+    systemctl --user enable code-server
+    
+    print_status "Systemd service created and enabled"
+}
+
+# Install Python data science environment
+install_python_environment() {
+    print_status "Setting up Python data science environment..."
+    
+    # Install miniconda
+    if ! command -v conda &> /dev/null; then
+        print_status "Installing Miniconda..."
+        wget -O miniconda.sh "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
+        bash miniconda.sh -b -p "$HOME/miniconda3"
+        rm miniconda.sh
+        
+        # Initialize conda
+        "$HOME/miniconda3/bin/conda" init bash
+        source "$HOME/.bashrc"
+    fi
+    
+    # Create data science environment
+    print_status "Creating data science conda environment..."
+    conda create -y -n datascience python=3.11
+    conda activate datascience
+    
+    # Install essential data science packages
+    conda install -y jupyter jupyterlab pandas numpy scipy matplotlib seaborn scikit-learn plotly bokeh
+    pip install streamlit dash fastapi uvicorn
+    
+    print_status "Python environment setup complete!"
+}
+
+# Main installation function
+main() {
+    print_status "Starting code-server installation..."
+    
+    check_os
+    install_dependencies
+    create_directories
+    install_code_server
+    generate_config
+    create_service
+    install_python_environment
+    
+    print_status "✅ Installation completed successfully!"
+    echo
+    echo -e "${GREEN}🎉 Code-Server is now installed!${NC}"
+    echo -e "${BLUE}Next steps:${NC}"
+    echo "1. Start code-server: systemctl --user start code-server"
+    echo "2. Check status: systemctl --user status code-server"
+    echo "3. Access via: http://localhost:8080"
+    echo "4. Configure nginx proxy (see nginx-config.conf)"
+    echo "5. Set up SSL with Let's Encrypt (see ssl-setup.sh)"
+    echo
+    echo -e "${YELLOW}Password: $CODE_SERVER_PASSWORD${NC}"
+    echo -e "${YELLOW}Config location: $CONFIG_DIR/config.yaml${NC}"
+}
+
+# Run main function
+main "$@"
