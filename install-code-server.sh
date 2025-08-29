@@ -128,13 +128,79 @@ install_code_server() {
     esac
     
     # Download code-server
-    wget -O code-server.tar.gz "https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-${ARCH}.tar.gz"
+    print_status "Downloading code-server binary..."
+    DOWNLOAD_URL="https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-${ARCH}.tar.gz"
+    
+    # Try wget first, then curl as fallback
+    if command -v wget &> /dev/null; then
+        if ! wget --timeout=30 --tries=3 -O code-server.tar.gz "$DOWNLOAD_URL"; then
+            print_warning "wget failed, trying curl..."
+            if command -v curl &> /dev/null; then
+                if ! curl -L --max-time 30 --retry 3 -o code-server.tar.gz "$DOWNLOAD_URL"; then
+                    print_error "Both wget and curl failed to download code-server"
+                    rm -rf "$TEMP_DIR"
+                    exit 1
+                fi
+            else
+                print_error "Failed to download code-server and curl not available"
+                rm -rf "$TEMP_DIR"
+                exit 1
+            fi
+        fi
+    elif command -v curl &> /dev/null; then
+        if ! curl -L --max-time 30 --retry 3 -o code-server.tar.gz "$DOWNLOAD_URL"; then
+            print_error "Failed to download code-server with curl"
+            rm -rf "$TEMP_DIR"
+            exit 1
+        fi
+    else
+        print_error "Neither wget nor curl available for download"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+    
+    # Verify download integrity
+    print_status "Verifying download integrity..."
+    if [ ! -s code-server.tar.gz ]; then
+        print_error "Downloaded file is empty"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+    
+    # Check if it's a valid tar file
+    if ! tar -tzf code-server.tar.gz >/dev/null 2>&1; then
+        print_error "Downloaded file is not a valid tar archive"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
     
     # Extract and install
-    tar -xzf code-server.tar.gz
+    print_status "Extracting code-server archive..."
+    if ! tar -xzf code-server.tar.gz; then
+        print_error "Failed to extract code-server archive"
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
     
     # Copy the entire code-server directory to preserve structure
     EXTRACTED_DIR="code-server-${CODE_SERVER_VERSION}-linux-${ARCH}"
+    
+    if [ ! -d "$EXTRACTED_DIR" ]; then
+        print_error "Extracted directory not found: $EXTRACTED_DIR"
+        print_status "Available contents:"
+        ls -la
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
+    
+    # Verify the binary exists in the extracted archive
+    if [ ! -f "$EXTRACTED_DIR/bin/code-server" ]; then
+        print_error "code-server binary not found in extracted archive"
+        print_status "Contents of $EXTRACTED_DIR:"
+        find "$EXTRACTED_DIR" -type f | head -10
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
     
     # Copy binary
     cp "$EXTRACTED_DIR/bin/code-server" "$INSTALL_DIR/bin/"
@@ -156,16 +222,25 @@ install_code_server() {
     # Verify the installation
     print_status "Verifying code-server installation..."
     if [ -f "$INSTALL_DIR/bin/code-server" ]; then
-        print_status "Binary installed successfully"
-        # Test that the binary is not corrupted
-        if file "$INSTALL_DIR/bin/code-server" | grep -q "ELF"; then
-            print_status "Binary appears to be valid"
+        print_status "Binary copied successfully"
+        
+        # Check file size (should be > 1MB for code-server)
+        FILESIZE=$(stat -c%s "$INSTALL_DIR/bin/code-server" 2>/dev/null || echo 0)
+        if [ "$FILESIZE" -lt 1000000 ]; then
+            print_error "Binary file appears too small (${FILESIZE} bytes), likely corrupted"
+            exit 1
+        fi
+        
+        # Test that the binary is executable and valid
+        if file "$INSTALL_DIR/bin/code-server" | grep -q "executable\|ELF"; then
+            print_status "Binary appears to be valid (${FILESIZE} bytes)"
         else
-            print_error "Binary may be corrupted"
+            print_error "Binary may be corrupted or invalid format"
+            print_status "File type: $(file "$INSTALL_DIR/bin/code-server")"
             exit 1
         fi
     else
-        print_error "Binary installation failed"
+        print_error "Binary installation failed - file not found"
         exit 1
     fi
     
