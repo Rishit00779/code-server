@@ -24,7 +24,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration variables
-CODE_SERVER_VERSION="4.93.1"
+CODE_SERVER_VERSION="4.103.2"
 INSTALL_DIR="$HOME/.local"
 CONFIG_DIR="$HOME/.config/code-server"
 SERVICE_DIR="$HOME/.config/systemd/user"
@@ -156,8 +156,21 @@ install_code_server() {
         print_status "Checking if release exists..."
         if ! curl -I --silent --fail "$DOWNLOAD_URL" >/dev/null 2>&1; then
             print_error "Release v${CODE_SERVER_VERSION} not found or URL is invalid"
-            print_status "You may need to check available releases at: https://github.com/coder/code-server/releases"
-            exit 1
+            
+            # Try to get the latest version automatically
+            print_status "Attempting to get latest release version..."
+            LATEST_VERSION=$(curl -s "https://api.github.com/repos/coder/code-server/releases/latest" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4 | sed 's/^v//')
+            
+            if [ -n "$LATEST_VERSION" ]; then
+                print_status "Found latest version: $LATEST_VERSION"
+                CODE_SERVER_VERSION="$LATEST_VERSION"
+                DOWNLOAD_URL="https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-${ARCH}.tar.gz"
+                print_status "Updated download URL: $DOWNLOAD_URL"
+            else
+                print_error "Could not determine latest version"
+                print_status "You may need to check available releases at: https://github.com/coder/code-server/releases"
+                exit 1
+            fi
         fi
         print_status "Release verified, proceeding with download..."
     fi
@@ -198,10 +211,11 @@ install_code_server() {
     fi
     
     DOWNLOAD_SIZE=$(stat -c%s code-server.tar.gz 2>/dev/null || stat -f%z code-server.tar.gz 2>/dev/null || echo 0)
-    print_status "Downloaded file size: ${DOWNLOAD_SIZE} bytes"
+    print_status "Downloaded file size: ${DOWNLOAD_SIZE} bytes ($(($DOWNLOAD_SIZE / 1024 / 1024))MB)"
     
-    if [ "$DOWNLOAD_SIZE" -lt 10000000 ]; then  # Should be at least ~10MB
+    if [ "$DOWNLOAD_SIZE" -lt 50000000 ]; then  # Should be at least ~50MB for recent versions
         print_error "Downloaded file is too small (${DOWNLOAD_SIZE} bytes), likely incomplete or corrupted"
+        print_status "Expected size: ~100-120MB for code-server v${CODE_SERVER_VERSION}"
         print_status "This usually indicates a network issue or invalid download URL"
         
         # Check if it's an HTML error page
@@ -275,10 +289,11 @@ install_code_server() {
     if [ -f "$INSTALL_DIR/bin/code-server" ]; then
         print_status "Binary copied successfully"
         
-        # Check file size (should be > 1MB for code-server) - cross-platform stat command
+        # Check file size (should be > 50MB for code-server v4.103.2) - cross-platform stat command
         FILESIZE=$(stat -c%s "$INSTALL_DIR/bin/code-server" 2>/dev/null || stat -f%z "$INSTALL_DIR/bin/code-server" 2>/dev/null || echo 0)
-        if [ "$FILESIZE" -lt 1000000 ]; then
-            print_error "Binary file appears too small (${FILESIZE} bytes), likely corrupted"
+        if [ "$FILESIZE" -lt 50000000 ]; then
+            print_error "Binary file appears too small (${FILESIZE} bytes / $(($FILESIZE / 1024 / 1024))MB), likely corrupted"
+            print_status "Expected size: ~50-80MB for code-server binary"
             exit 1
         fi
         
