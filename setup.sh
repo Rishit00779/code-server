@@ -281,11 +281,12 @@ fix_curl_minimal_issue() {
             print_status "Checking for curl-minimal package issues (Amazon Linux)..."
             sudo dnf clean all
             sudo dnf update -y
-            sudo dnf reinstall curl curl-minimal -y || {
-                print_warning "Reinstall failed, trying remove and install."
-                sudo dnf remove curl curl-minimal -y
-                sudo dnf install curl -y
-            }
+            # Try reinstall with --allowerasing to resolve conflicts
+            if ! sudo dnf reinstall curl curl-minimal -y --allowerasing; then
+                print_warning "Reinstall failed, trying remove and install with --allowerasing."
+                sudo dnf remove curl curl-minimal -y --allowerasing
+                sudo dnf install curl -y --allowerasing
+            fi
         fi
     fi
 }
